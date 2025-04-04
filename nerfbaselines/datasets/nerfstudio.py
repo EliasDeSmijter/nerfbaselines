@@ -4,6 +4,7 @@ from pathlib import Path
 import math
 import json
 from typing import Optional, List, Tuple, Dict, Union, FrozenSet
+from plyfile import PlyData, PlyElement
 
 import numpy as np
 from PIL import Image
@@ -297,7 +298,7 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
     has_split_files_spec = any(f"{split}_filenames" in meta for split in ("train", "val", "test"))
     if f"{split}_filenames" in meta:
         # Validate split first
-        split_filenames = set(str(_get_fname(Path(x), data_dir)) for x in meta[f"{split}_filenames"])
+        split_filenames = set(_get_fname(Path(x), data_dir) for x in meta[f"{split}_filenames"])
         unmatched_filenames = split_filenames.difference(image_filenames)
         if unmatched_filenames:
             raise RuntimeError(f"Some filenames for split {split} were not found: {unmatched_filenames}.")
@@ -358,7 +359,6 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
     #         [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
     #     )
     # )
-
     if "camera_model" in meta:
         camera_type = CAMERA_MODEL_TO_TYPE.get(meta.get("camera_model"))
         if camera_type is None or camera_type not in get_args(CameraModel):
@@ -397,14 +397,14 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
     c2w = poses[:, :3, :4]
 
     # Convert from OpenGL to OpenCV coordinate system
-    c2w[0:3, 1:3] *= -1
+    c2w[...,0:3, 1:3] *= -1
 
     all_cameras = new_cameras(
         poses=c2w.astype(np.float32),
         intrinsics=np.stack([fx, fy, cx, cy], -1).astype(np.float32),
         camera_models=np.full((len(poses),), camera_model_to_int(camera_type), dtype=np.uint8),
         distortion_parameters=distortion_params.astype(np.float32),
-        image_sizes=np.stack([height, width], -1).astype(np.int32),
+        image_sizes=np.stack([width, height], -1).astype(np.int32),
         nears_fars=None,
     )
 
@@ -436,16 +436,26 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
         colmap_path = data_dir / "colmap" / "sparse" / "0"
         if not colmap_path.exists():
             colmap_path = data_dir / "sparse" / "0"
-        if not colmap_path.exists():
+        elif not colmap_path.exists():
             colmap_path = data_dir / "sparse"
-        if not colmap_path.exists():
+        elif not colmap_path.exists():
             colmap_path = data_dir
         points3D = None
         if (colmap_path / "points3D.bin").exists():
             points3D = read_points3D_binary(str(colmap_path / "points3D.bin"))
         elif (colmap_path / "points3D.txt").exists():
             points3D = read_points3D_text(str(colmap_path / "points3D.txt"))
-        if points3D is not None:
+
+        # Added for speedplus dataset
+        if (points3D is None) and ('speed' in str(colmap_path)):
+            plypath = data_dir / "points3d.ply"
+            plydata = PlyData.read(plypath)
+            vertices = plydata['vertex']
+            points3D_xyz = np.vstack([vertices['x'], vertices['y'], vertices['z']], dtype=np.float32).T
+            points3D_rgb = np.vstack([vertices['red'], vertices['green'], vertices['blue']], dtype=np.uint8).T
+        # end of addition (also changed if to elif on next line)
+
+        elif points3D is not None:
             points3D_xyz = np.array([p.xyz for p in points3D.values()], dtype=np.float32)
             points3D_rgb = np.array([p.rgb for p in points3D.values()], dtype=np.uint8)
 

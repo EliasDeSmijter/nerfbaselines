@@ -2,6 +2,7 @@ import logging
 import json
 from pathlib import Path
 import numpy as np
+from plyfile import PlyData, PlyElement
 from nerfbaselines import camera_model_to_int, new_cameras, new_dataset
 from nerfbaselines._constants import DATASETS_REPOSITORY
 from ._common import download_dataset_wrapper, download_archive_dataset
@@ -50,6 +51,14 @@ def load_blender_dataset(path: str, split: str, **kwargs):
     # Convert from OpenGL to OpenCV coordinate system
     c2w[..., 0:3, 1:3] *= -1
 
+    # Added for wild-gaussians
+    plypath = _path / "points3d.ply"
+    plydata = PlyData.read(plypath)
+    vertices = plydata['vertex']
+    points3D_xyz = np.vstack([vertices['x'], vertices['y'], vertices['z']], dtype=np.float32).T
+    points3D_rgb = np.vstack([vertices['red'], vertices['green'], vertices['blue']], dtype=np.uint8).T
+    # end of addition (also changed if to elif on next line)
+
     return new_dataset(
         cameras=new_cameras(
             poses=c2w,
@@ -62,10 +71,11 @@ def load_blender_dataset(path: str, split: str, **kwargs):
         image_paths_root=path,
         image_paths=image_paths,
         sampling_mask_paths=None,
+        points3D_xyz=points3D_xyz,
+        points3D_rgb=points3D_rgb,
         metadata={
             "color_space": "srgb",
             "expected_scene_scale": 4,
-            "depth_range": [2, 6],
             "background_color": np.array([255, 255, 255], dtype=np.uint8),
         },
     )

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
-import palettes from './palettes.js';
 
 
 function makeMatrix4(elements) {
@@ -9,62 +8,6 @@ function makeMatrix4(elements) {
   }
   return new THREE.Matrix4().set(...elements, 0, 0, 0, 1);
 }
-
-
-
-
-
-export const depth_vertex_shader = /* glsl */`
-varying vec2 vUv;
-varying vec2 vHighPrecisionZW;
-
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-	vHighPrecisionZW = gl_Position.zw;
-}
-`;
-
-export const depth_fragment_shader = /* glsl */`
-uniform float znear;
-uniform float zfar;
-uniform float range_min;
-uniform float range_max;
-uniform sampler2D palette;
-
-varying vec2 vHighPrecisionZW;
-
-void main() {
-  float fragCoordZ = vHighPrecisionZW[0] / vHighPrecisionZW[1];
-  float zbuffer = (2.0 * znear * zfar) / (zfar + znear - fragCoordZ * (zfar - znear));
-  float mapped = 1.0 - 1.0 / (1.0 + zbuffer);
-  float zvalue = (mapped - range_min) / (range_max - range_min);
-  vec3 zcolor = texture(palette, vec2(1.0-zvalue, 0)).rgb;
-  gl_FragColor = vec4(zcolor, 1.0);
-}
-`;
-
-const mapValue = x => 1.0 - (1.0 / (1.0 + x));
-
-
-class MeshDepthMaterial extends THREE.ShaderMaterial {
-  constructor({ palette, ...rest }) {
-    super({
-      uniforms: {
-        'tDiffuse': { value: null },
-        'opacity': { value: 1.0 },
-        'znear': { value: 0.001 },
-        'zfar': { value: 1000 },
-        'range_min': { value: mapValue(2.0) },
-        'range_max': { value: mapValue(6.0) },
-        'palette': { value: palette, type: 't'},
-      },
-      vertexShader: depth_vertex_shader,
-      fragmentShader: depth_fragment_shader,
-      ...rest,
-    });
-  }
-};
 
 
 export class MeshFrameRenderer {
@@ -85,75 +28,13 @@ export class MeshFrameRenderer {
     if (Array.isArray(background_color))
       background_color = new THREE.Color(...background_color);
     this.mesh_url = mesh_url;
-    this.defaultBackground = new THREE.Color(background_color || 0x000000);
-    this.scene.background = null;
+    this.scene.background = new THREE.Color(background_color || 0x000000);
     this.camera = new THREE.Camera();
     this.canvas = new OffscreenCanvas(1, 1);
     this._flipCanvas = new OffscreenCanvas(1, 1);
-    this.renderer = new THREE.WebGLRenderer({antialias: true, canvas: this.canvas, stencil: true});
-    this.renderer.autoClear = false;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, canvas: this.canvas });
     this._loadPlyModel(mesh_url);
-    this._splitScene = new THREE.Scene();
-    this._splitScene.background = null;
-    this._splitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this._splitGeometry = new THREE.BufferGeometry();
-    this._splitScene.add(new THREE.Mesh(
-      this._splitGeometry,
-      new THREE.MeshBasicMaterial({ 
-        color: 0xffffff,
-        colorWrite: true,
-        depthWrite: false, 
-        depthTest: false,
-        stencilWrite: true,
-        stencilRef: 1,
-        stencilFunc: THREE.AlwaysStencilFunc,
-        stencilFail: THREE.ReplaceStencilOp,
-        stencilZFail: THREE.ReplaceStencilOp,
-        stencilZPass: THREE.ReplaceStencilOp,
-      })
-    ));
-
-    this.material = new THREE.MeshBasicMaterial({ 
-      vertexColors: true,
-      stencilWrite: true,
-      stencilRef: 1,
-      stencilFunc: THREE.EqualStencilFunc,
-      stencilFail: THREE.KeepStencilOp,
-      stencilZFail: THREE.KeepStencilOp,
-      stencilZPass: THREE.KeepStencilOp,
-    });
-    this.normalMaterial = new THREE.MeshNormalMaterial({
-      stencilWrite: true,
-      stencilRef: 1,
-      stencilFunc: THREE.EqualStencilFunc,
-      stencilFail: THREE.KeepStencilOp,
-      stencilZFail: THREE.KeepStencilOp,
-      stencilZPass: THREE.KeepStencilOp,
-    });
-    this.output_types = ["color", "depth", "normal"];
-    this.palettes = {};
-    for (const name in palettes) {
-      const palette = palettes[name];
-      const numColors = palette.length / 3;
-      const data = new Uint8Array(numColors * 4);
-      for (let i = 0; i < numColors; i++) {
-        data[i * 4 + 0] = palette[i*3];
-        data[i * 4 + 1] = palette[i*3+1];
-        data[i * 4 + 2] = palette[i*3+2];
-        data[i * 4 + 3] = 255;
-      }
-      this.palettes[name] = new THREE.DataTexture(data, numColors, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
-      this.palettes[name].needsUpdate = true;
-    }
-    this.depthMaterial = new MeshDepthMaterial({ 
-      palette: null,
-      stencilWrite: true,
-      stencilRef: 1,
-      stencilFunc: THREE.EqualStencilFunc,
-      stencilFail: THREE.KeepStencilOp,
-      stencilZFail: THREE.KeepStencilOp,
-      stencilZPass: THREE.KeepStencilOp,
-    });
+    this.output_types = ["color"];
   }
 
   async _loadPlyModel(mesh_url) {
@@ -216,7 +97,8 @@ export class MeshFrameRenderer {
       const arrayBuffer = await response.arrayBuffer();
       const geometry = new PLYLoader().parse(arrayBuffer);
       geometry.computeVertexNormals();
-      const mesh = new THREE.Mesh(geometry, this.material);
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true });
+      const mesh = new THREE.Mesh(geometry, material);
       if (cancelled) return;
       this.scene.add(mesh);
       this.update_notification({ id: this._notificationId, autoclose: 0 });
@@ -271,81 +153,6 @@ export class MeshFrameRenderer {
     ti[3] = 0;      ti[7] = 0;      ti[11] = -1;         ti[15] = 0;
   }
 
-  _setMaterial(params, isSplit) {
-    // Set material
-    const outputType = isSplit ? params.split_output_type : params.output_type;
-    const palette = isSplit ? params.split_palette : params.palette;
-    const outputRange = isSplit ? params.split_range : params.output_range;
-    this.scene.children.forEach((mesh) => {
-      let material = null;
-      if (outputType === "normal") {
-        mesh.material = this.normalMaterial;
-      } else if (outputType === "depth") {
-        mesh.material = this.depthMaterial;
-        const paletteData = this.palettes[palette || "viridis"];
-        this.depthMaterial.uniforms.palette.value = paletteData;
-        this.depthMaterial.uniforms.znear.value = this.near;
-        this.depthMaterial.uniforms.zfar.value = this.far;
-        const concreteValue = x => x !== null && x !== undefined && x !== "" && isFinite(x);
-        this.depthMaterial.uniforms.range_min.value = concreteValue(outputRange?.[0]) ? mapValue(outputRange[0]) : 0;
-        this.depthMaterial.uniforms.range_max.value = concreteValue(outputRange?.[1]) ? mapValue(outputRange[1]) : 1;
-      } else {
-        mesh.material = this.material;
-      }
-      mesh.material.stencilFunc = isSplit ? THREE.EqualStencilFunc : THREE.NotEqualStencilFunc;
-    });
-  }
-
-  _updateSplitGeometry({ split_tilt=0, split_percentage=0.5, width, height } = {}) {
-    const tiltRadians = -split_tilt * Math.PI / 180;
-    const splitDir = new THREE.Vector2(Math.cos(tiltRadians), Math.sin(tiltRadians));
-    const splitDirLen = width / 2 * Math.abs(splitDir.x) + height / 2 * Math.abs(splitDir.y);
-    const m = split_percentage * 2 - 1;
-    // const sp = new THREE.Vector3(splitDir.x * m, splitDir.y * m, 0);
-    const sp = new THREE.Vector3(
-      2 * (splitDir.x * splitDirLen * m) / width,
-      2 * (splitDir.y * splitDirLen * m) / height,
-      0
-    );
-    const sdNorm = new THREE.Vector2(splitDir.x * width, splitDir.y * height).normalize();
-    const sd = new THREE.Vector3(sdNorm.x, sdNorm.y, 0);
-    const so = new THREE.Vector3(sd.y, -sd.x, 0);
-    const c = 4;
-    this._splitGeometry.setFromPoints([
-      sp.clone().addScaledVector(so, -c),
-      sp.clone().addScaledVector(so, c),
-      sp.clone().addScaledVector(so, -c).addScaledVector(sd, c),
-      sp.clone().addScaledVector(so, c),
-      sp.clone().addScaledVector(so, c).addScaledVector(sd, c),
-      sp.clone().addScaledVector(so, -c).addScaledVector(sd, c),
-    ]);
-  }
-
-  _getBackground(params, isSplit) {
-    // Set material
-    const outputType = isSplit ? params.split_output_type : params.output_type;
-    if (outputType === "normal") {
-      return new THREE.Color(0x000000);
-    } else if (outputType === "depth") {
-      const palette = isSplit ? params.split_palette : params.palette;
-      const outputRange = isSplit ? params.split_output_range : params.output_range;
-      const paletteData = this.palettes[palette || "viridis"];
-      const concreteValue = x => x !== null && x !== undefined && x !== "" && isFinite(x);
-      const rangeMin = concreteValue(outputRange?.[0]) ? mapValue(outputRange[0]) : 0;
-      const rangeMax = concreteValue(outputRange?.[1]) ? mapValue(outputRange[1]) : 1;
-      const coloridx = (rangeMax > rangeMin) ? 
-        0 : paletteData.source.data.data.length/4-1;
-      return new THREE.Color().setRGB(
-        paletteData.source.data.data[coloridx*4+0]/255,
-        paletteData.source.data.data[coloridx*4+1]/255,
-        paletteData.source.data.data[coloridx*4+2]/255,
-        THREE.SRGBColorSpace
-      );
-    } else {
-      return this.defaultBackground;
-    }
-  }
-
   async render(params, { flipY = false } = {}) {
     const [width, height] = params.image_size;
     const needResize = this.canvas.width !== width || this.canvas.height !== height;
@@ -370,36 +177,7 @@ export class MeshFrameRenderer {
     matrix.decompose(position, quaternion, scale);
     this.camera.position.copy(position);
     this.camera.quaternion.copy(quaternion);
-    this.camera.updateMatrixWorld();
-
-    // Clear all
-    this._setMaterial(params);
-    this.renderer.setClearColor(this._getBackground(params, false), 1);
-    this.renderer.clear();
-
-    // If split is enabled, render two images by using stencil buffer
-    if (params.split_percentage) {
-      this._updateSplitGeometry({ ...params, width, height });
-      // Transform points camera space to world space
-      this._splitGeometry.computeBoundingSphere();
-      this._splitScene.children[0].material.color = this._getBackground(params, true);
-
-      // Render split mask, but do not clear buffers
-      this.renderer.render(this._splitScene, this._splitCamera);
-      this.renderer.clearDepth();
-
-      // Render left half
-      this.renderer.render(this.scene, this.camera);
-      
-      // Set split material
-      this._setMaterial(params, true);
-      this.renderer.render(this.scene, this.camera);
-    } else {
-      this.renderer.clear();
-      this._setMaterial(params);
-      this.renderer.render(this.scene, this.camera);
-    }
-
+    this.renderer.render(this.scene, this.camera);
     // Flip the image vertically
     let imageBitmap = await this.canvas.transferToImageBitmap();
     if (flipY)
