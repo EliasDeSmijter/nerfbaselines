@@ -460,6 +460,13 @@ def eval_all(method: Method, logger: Optional[Logger], dataset: Dataset, *, outp
                          display_name="color", 
                          description="left: gt, right: prediction", 
                          step=step)
+        if "depth" in pred:
+            depth_vis = make_image_grid(*vis_depth, ncol=num_cols)
+            logger.add_image(f"eval-all-{split}/depth", 
+                            depth_vis, 
+                            display_name="depth", 
+                            description="predicted depth maps", 
+                            step=step)
     return metrics
 
 

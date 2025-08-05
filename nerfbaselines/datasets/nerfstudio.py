@@ -140,7 +140,7 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
     """Scales the depth values to meters. Default value is 0.001 for a millimeter to meter conversion."""
 
     # Literal["fraction", "filename", "interval", "all"]
-    eval_mode = "fraction"
+    eval_mode = "all"
     """
     The method to use for splitting the dataset into train and eval.
     Fraction splits based on a percentage for train and the remaining for eval.
@@ -162,7 +162,7 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
         if downscale_factor is None:
             if downscale_factor_original is None:
                 test_img = Image.open(data_dir / filepath)
-                h, w = test_img.size
+                w, h = test_img.size
                 max_res = max(h, w)
                 df = 0
                 while True:
@@ -189,11 +189,11 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
     if path.suffix == ".json":
         meta = load_from_json(path)
         data_dir = path.parent
-    elif (path / "transforms.json").exists():
-        meta = load_from_json(path / "transforms.json")
+    elif (path / f"transforms_{split}.json").exists():
+        meta = load_from_json(path / f"transforms_{split}.json")
         data_dir = path
     else:
-        raise DatasetNotFoundError(f"Could not find transforms.json in {path}")
+        raise DatasetNotFoundError(f"Could not find transforms_{split}.json in {path}")
 
     image_filenames: List[str] = []
     mask_filenames: List[str] = []
@@ -452,7 +452,10 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
             plydata = PlyData.read(plypath)
             vertices = plydata['vertex']
             points3D_xyz = np.vstack([vertices['x'], vertices['y'], vertices['z']], dtype=np.float32).T
-            points3D_rgb = np.vstack([vertices['red'], vertices['green'], vertices['blue']], dtype=np.uint8).T
+            try:
+                points3D_rgb = np.vstack([vertices['red'], vertices['green'], vertices['blue']], dtype=np.uint8).T
+            except: #Initialize with random colors but at correct location
+                points3D_rgb = np.random.randint(0,256,points3D_xyz.shape,np.uint8)
         # end of addition (also changed if to elif on next line)
 
         elif points3D is not None:

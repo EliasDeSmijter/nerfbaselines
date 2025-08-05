@@ -640,6 +640,9 @@ def _save_predictions_iterate(output: str, predictions: Iterable[RenderOutput], 
                 depth_rgb = visualize_depth(pred["depth"], near_far=dataset["cameras"].nears_fars[i] if dataset["cameras"].nears_fars is not None else None, expected_scale=expected_scene_scale)
                 with open_fn(f"depth-rgb/{relative_name.with_suffix('.png')}") as f:
                     save_image(f, depth_rgb)
+            if "accumulation" in pred:
+                with open_fn(f"accumulation/{relative_name.with_suffix('.png')}") as f:
+                    save_image(f, visualize_depth(pred["accumulation"]))
             if color_space == "linear":
                 # Store the raw linear image as well
                 with open_fn(f"gt-color-linear/{relative_name.with_suffix('.bin')}") as f:

@@ -147,9 +147,12 @@ def evaluate(predictions: str,
 
     with open_any_directory(predictions, "r") as _predictions_path:
         predictions_path = Path(_predictions_path)
-        with open(predictions_path / "info.json", "r", encoding="utf8") as f:
-            nb_info = json.load(f)
-        nb_info = deserialize_nb_info(nb_info)
+        try:
+            with open(predictions_path / "info.json", "r", encoding="utf8") as f:
+                nb_info = json.load(f)
+            nb_info = deserialize_nb_info(nb_info)
+        except FileNotFoundError:
+            nb_info = {"evaluation_protocol": "default"}
 
         if evaluation_protocol is None:
             evaluation_protocol = build_evaluation_protocol(nb_info["evaluation_protocol"])
@@ -217,7 +220,7 @@ def evaluate(predictions: str,
 
 class DefaultEvaluationProtocol(EvaluationProtocol):
     _name = "default"
-    _lpips_vgg = False
+    _lpips_vgg = True
 
     def __init__(self):
         pass
@@ -227,6 +230,7 @@ class DefaultEvaluationProtocol(EvaluationProtocol):
         info = method.get_info()
         supported_camera_models = info.get("supported_camera_models", frozenset(("pinhole",)))
         render = with_supported_camera_models(supported_camera_models)(method.render)
+        options = {'dataset': dataset}
         return render(dataset["cameras"].item(), options=options)
 
     def get_name(self):

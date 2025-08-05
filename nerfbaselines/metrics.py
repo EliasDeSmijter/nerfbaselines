@@ -434,4 +434,4 @@ def lpips_vgg(a: np.ndarray, b: np.ndarray) -> Union[np.ndarray, np.float32]:
     return _lpips(a, b, net="vgg")
 
 
-lpips = lpips_alex
+lpips = lpips_vgg
