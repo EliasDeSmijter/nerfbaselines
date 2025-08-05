@@ -168,12 +168,14 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
                 while True:
                     if (max_res / 2 ** (df)) < MAX_AUTO_RESOLUTION:
                         break
-                    if not (data_dir / f"{downsample_folder_prefix}{2**(df+1)}" / filepath.name).exists():
+                    new_path = Path(str(filepath).replace('images', downsample_folder_prefix+f'{2**(df+1)}'))
+                    if not new_path.exists():
+                        print(f'Image {new_path} does not exist! Will have to use a less downscaled image')
                         break
                     df += 1
 
                 downscale_factor = 2**df
-                logging.info(f"Auto image downscale factor of {downscale_factor}")
+                logging.info(f"Auto image downscale factor of {downscale_factor} to go to resolution {w/downscale_factor}x{h/downscale_factor}")
             else:
                 downscale_factor = downscale_factor_original
 
@@ -181,7 +183,7 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
         assert downscale_factor is not None
 
         if downscale_factor > 1:
-            return data_dir / f"{downsample_folder_prefix}{downscale_factor}" / filepath.name
+            return Path(str(filepath).replace('images', downsample_folder_prefix+f'{downscale_factor}'))
         return data_dir / filepath
 
     assert path.exists(), f"Data directory {path} does not exist."
@@ -447,7 +449,7 @@ def load_nerfstudio_dataset(path: Union[Path, str], split: str, downscale_factor
             points3D = read_points3D_text(str(colmap_path / "points3D.txt"))
 
         # Added for speedplus dataset
-        if (points3D is None) and ('speed' in str(colmap_path)):
+        if (points3D is None) and ('speed' in str(filepath)):
             plypath = data_dir / "points3d.ply"
             plydata = PlyData.read(plypath)
             vertices = plydata['vertex']

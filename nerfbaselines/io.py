@@ -622,7 +622,8 @@ def _save_predictions_iterate(output: str, predictions: Iterable[RenderOutput], 
             assert gt_image.shape[:-1] == pred_image.shape[:-1], f"gt size {gt_image.shape[:-1]} != pred size {pred_image.shape[:-1]}"
             relative_name = Path(dataset["image_paths"][i])
             if dataset["image_paths_root"] is not None:
-                relative_name = relative_name.relative_to(Path(dataset["image_paths_root"]))
+                relative_name = Path(os.path.basename(relative_name))
+                # relative_name = relative_name.relative_to(Path(dataset["image_paths_root"]))
             with open_fn(f"gt-color/{relative_name.with_suffix('.png')}") as f:
                 save_image(f, gt_image)
             with open_fn(f"color/{relative_name.with_suffix('.png')}") as f:
