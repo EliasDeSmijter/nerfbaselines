@@ -381,6 +381,8 @@ def dataset_load_features(
                 warnings.warn(f"Resized image with a factor of {resize}")
 
             image = np.array(pil_image, dtype=np.uint8)
+            if len(image.shape)==2:
+                image = np.stack(3*[image], axis=-1)
         images.append(image)
         image_sizes.append([image.shape[1], image.shape[0]])
         all_metadata.append(metadata)
